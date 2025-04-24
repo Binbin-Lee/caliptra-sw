@@ -357,36 +357,27 @@ impl Mldsa87 {
         cprintln!("Waiting for stream ready");
         Mldsa87::wait(mldsa, || mldsa.status().read().msg_stream_ready())?;
 
+        // First set all bytes as valid
+        mldsa.msg_strobe().write(|s| s.strobe(0xf));
         // Stream the message to the hardware.
-        let mut count = msg.len() / size_of::<u32>();
-        cprintln!("Count: {}", count);
-        let mut last_dword_len = 0u32;
-        let (buf_words, suffix) = <[Unalign<u32>]>::ref_from_prefix_with_elems(msg, count).unwrap();
-        if suffix.is_empty() {
-            count -= 1;
-            cprintln!("Suffix is empty, new count: {}", count);
-        } else {
-            last_dword_len = suffix.len() as u32;
-            cprintln!("Suffix is not empty, last dword len: {}", last_dword_len);
-        }
-        for word in buf_words.iter().take(count) {
-            mldsa.msg().at(0).write(|_| word.get());
+        let dwords = msg.chunks_exact(size_of::<u32>());
+        let remainder = dwords.remainder();
+        for dword in dwords {
+            let dw = <Unalign<u32>>::read_from_bytes(dword).unwrap();
+            mldsa.msg().at(0).write(|_| dw.get());
         }
 
-        // Write the strobe register to indicate the end of the message.
-        cprintln!("Writing strobe register");
-        mldsa.msg_strobe().write(|_| last_dword_len.into());
-
-        // Write the last incomplete word.
-        if !suffix.is_empty() && suffix.len() <= size_of::<u32>() {
-            cprintln!("Writing last incomplete word");
-            let mut last_word = 0_u32;
-            last_word.as_mut_bytes()[..suffix.len()].copy_from_slice(suffix);
-            mldsa.msg().at(0).write(|_| last_word);
-        } else if suffix.is_empty() {
-            // Write the last complete word.
-            cprintln!("Writing last complete word");
-            mldsa.msg().at(0).write(|_| buf_words[count].get());
+        mldsa
+            .msg_strobe()
+            .write(|s| s.strobe(remainder.len() as u32));
+        match remainder.len() {
+            0 => (), // do nothing
+            _ => {
+                // write last dword
+                let mut last_word = 0_u32;
+                last_word.as_mut_bytes()[..remainder.len()].copy_from_slice(remainder);
+                mldsa.msg().at(0).write(|_| last_word);
+            }
         }
 
         // Wait for hardware ready
