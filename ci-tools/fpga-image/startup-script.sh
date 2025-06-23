@@ -10,6 +10,11 @@ echo 3 > /proc/sys/kernel/printk
 
 function runner_jitconfig() {
   echo "Executing GHA runner"
+
+  echo "JIT is ${#cmd_array[1]} bytes"
+  echo "Token hash:"
+  echo -n ${cmd_array[1]} | sha256sum
+
   su runner -c "./run.sh --jitconfig \"${cmd_array[1]}\""
   echo "GHA runner complete"
 }

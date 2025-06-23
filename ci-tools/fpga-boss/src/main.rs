@@ -162,7 +162,10 @@ fn active_runner_error_checks(input: &str) -> std::io::Result<()> {
 /// to recover the FPGA.
 fn check_for_github_runner_exception(input: &str) -> std::io::Result<()> {
     if input.contains("Unhandled exception") {
-        Err(Error::new(ErrorKind::BrokenPipe, "Github runner had an unhandled exception"))?;
+        Err(Error::new(
+            ErrorKind::BrokenPipe,
+            "Github runner had an unhandled exception",
+        ))?;
     }
     Ok(())
 }
@@ -433,12 +436,19 @@ fn main_impl() -> anyhow::Result<()> {
                     cached_token = Some(output.stdout);
                 }
 
+                use base64::prelude::*;
+
+                let token_raw =
+                    String::from_utf8(cached_token.clone().expect(
+                        "A token should always be cached before sending it over the UART",
+                    ))?;
+                let token = token_raw.trim();
+                println!("JIT token of {} bytes: {:?}", token.len(), token);
+                BASE64_STANDARD
+                    .decode(&token)
+                    .expect("Failed to decode the token from base64");
                 uart_tx.write_all(b"runner-jitconfig ")?;
-                uart_tx.write_all(
-                    &cached_token
-                        .clone()
-                        .expect("A token should always be cached before sending it over the UART"),
-                )?;
+                uart_tx.write_all(token.as_bytes())?;
                 uart_tx.write_all(b"\n")?;
 
                 // FGPA has `boot_timeout: Duration` to connect to GitHub until we reset and try again.
