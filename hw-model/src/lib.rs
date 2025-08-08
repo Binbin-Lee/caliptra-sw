@@ -39,7 +39,7 @@ mod bus_logger;
 mod model_verilated;
 
 #[cfg(feature = "fpga_realtime")]
-mod model_fpga_realtime;
+pub mod model_fpga_realtime;
 
 mod output;
 mod rv32_builder;

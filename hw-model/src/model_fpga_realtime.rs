@@ -130,7 +130,7 @@ pub struct ModelFpgaRealtime {
 }
 
 impl ModelFpgaRealtime {
-    fn realtime_thread_itrng_fn(
+    pub fn realtime_thread_itrng_fn(
         wrapper: *mut u32,
         exit: Arc<AtomicBool>,
         mut itrng_nibbles: Box<dyn Iterator<Item = u8> + Send>,

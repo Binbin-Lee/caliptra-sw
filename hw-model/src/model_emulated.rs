@@ -64,23 +64,23 @@ impl Bus for EmulatedApbBus<'_> {
 
 /// Emulated model
 pub struct ModelEmulated {
-    cpu: Cpu<BusLogger<CaliptraRootBus>>,
-    soc_to_caliptra_bus: SocToCaliptraBus,
-    output: Output,
-    trace_fn: Option<Box<InstrTracer<'static>>>,
-    ready_for_fw: Rc<Cell<bool>>,
-    cpu_enabled: Rc<Cell<bool>>,
-    trace_path: Option<PathBuf>,
+    pub cpu: Cpu<BusLogger<CaliptraRootBus>>,
+    pub soc_to_caliptra_bus: SocToCaliptraBus,
+    pub output: Output,
+    pub trace_fn: Option<Box<InstrTracer<'static>>>,
+    pub ready_for_fw: Rc<Cell<bool>>,
+    pub cpu_enabled: Rc<Cell<bool>>,
+    pub trace_path: Option<PathBuf>,
 
     // Keep this even when not including the coverage feature to keep the
     // interface consistent
-    _rom_image_tag: u64,
-    iccm_image_tag: Option<u64>,
-    trng_mode: TrngMode,
+    pub _rom_image_tag: u64,
+    pub iccm_image_tag: Option<u64>,
+    pub trng_mode: TrngMode,
 
-    events_to_caliptra: mpsc::Sender<Event>,
-    events_from_caliptra: mpsc::Receiver<Event>,
-    collected_events_from_caliptra: Vec<Event>,
+    pub events_to_caliptra: mpsc::Sender<Event>,
+    pub events_from_caliptra: mpsc::Receiver<Event>,
+    pub collected_events_from_caliptra: Vec<Event>,
 }
 
 #[cfg(feature = "coverage")]
@@ -113,6 +113,10 @@ impl Drop for ModelEmulated {
 impl ModelEmulated {
     pub fn code_coverage_bitmap(&self) -> CoverageBitmaps {
         self.cpu.code_coverage.code_coverage_bitmap()
+    }
+
+    pub fn cpu_enabled(&self) -> bool {
+        self.cpu_enabled.get()
     }
 }
 
