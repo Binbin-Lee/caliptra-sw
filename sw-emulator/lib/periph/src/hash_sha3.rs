@@ -14,12 +14,11 @@ Abstract:
 
 use crate::KeyVault;
 use caliptra_emu_bus::{BusError, Clock, ReadOnlyRegister, ReadWriteRegister, Timer};
-use caliptra_emu_crypto::{Sha3, Sha3Mode, Sha3Strength};
+use caliptra_emu_crypto::Sha3;
 use caliptra_emu_derive::Bus;
 use caliptra_emu_types::{RvData, RvSize};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use tock_registers::register_bitfields;
-use tock_registers::registers::InMemoryRegister;
 
 enum CmdType {
     Start = 0x1D,
@@ -264,9 +263,8 @@ impl HashSha3 {
         let recov_err = self.alert_test.reg.read(AlertTest::RECOV_OPERATION_ERR);
 
         self.status.reg.modify(
-            (Status::ALERT_RECOV_CTRL_UPDATE_ERR.val(recov_err)
-                + Status::ALERT_FATAL_FAULT.val(fatal_fault))
-            .into(),
+            Status::ALERT_RECOV_CTRL_UPDATE_ERR.val(recov_err)
+                + Status::ALERT_FATAL_FAULT.val(fatal_fault),
         );
 
         Ok(())
@@ -429,7 +427,9 @@ impl HashSha3 {
 mod tests {
     use super::*;
     use caliptra_emu_bus::Bus;
+    use caliptra_emu_crypto::{Sha3Mode, Sha3Strength};
     use caliptra_emu_types::RvAddr;
+    use tock_registers::registers::InMemoryRegister;
 
     const OFFSET_NAME0: RvAddr = 0x0;
     const OFFSET_NAME1: RvAddr = 0x4;
@@ -445,8 +445,8 @@ mod tests {
 
     fn read_state(sha3: &mut HashSha3) -> [u32; SHA3_STATE_MEMORY_SIZE] {
         let mut output = [0u32; SHA3_STATE_MEMORY_SIZE];
-        for i in 0..SHA3_STATE_MEMORY_SIZE {
-            output[i] = sha3
+        for (i, element) in output.iter_mut().enumerate() {
+            *element = sha3
                 .read(RvSize::Word, OFFSET_STATE + (i * 4) as u32)
                 .unwrap();
         }

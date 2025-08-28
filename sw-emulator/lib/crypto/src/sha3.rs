@@ -83,6 +83,12 @@ pub struct Sha3 {
     digest: [u8; DIGEST_SIZE],
 }
 
+impl Default for Sha3 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Sha3 {
     /// Create a new instance of Secure Hash Algorithm object
     ///
