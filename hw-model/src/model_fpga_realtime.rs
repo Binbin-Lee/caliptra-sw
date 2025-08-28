@@ -78,6 +78,7 @@ bitfield! {
     cptra_obf_field_entropy_vld, set_cptra_obf_field_entropy_vld: 3, 3;
     debug_locked, set_debug_locked: 4, 4;
     device_lifecycle, set_device_lifecycle: 6, 5;
+    axi_reset, set_axi_reset: 31, 31;
 }
 
 bitfield! {
@@ -212,6 +213,19 @@ impl ModelFpgaRealtime {
                 }
             }
             thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    fn axi_reset(&mut self) {
+        unsafe {
+            let mut val = WrapperControl(
+                self.wrapper
+                    .offset(FPGA_WRAPPER_CONTROL_OFFSET)
+                    .read_volatile(),
+            );
+            val.set_axi_reset(1);
+            // wait a few clock cycles or we can crash the FPGA
+            std::thread::sleep(std::time::Duration::from_micros(1));
         }
     }
 
@@ -446,7 +460,9 @@ impl HwModel for ModelFpgaRealtime {
         Self: Sized,
     {
         let output = Output::new(params.log_writer);
-        let uio_num = usize::from_str(&env::var("CPTRA_UIO_NUM")?)?;
+        let uio_num = usize::from_str(
+            &env::var("CPTRA_UIO_NUM").expect("Set CPTRA_UIO_NUM when using the FPGA"),
+        )?;
         // This locks the device, and so acts as a test mutex so that only one test can run at a time.
         let dev = UioDevice::blocking_new(uio_num)
             .expect("UIO driver not found. Run \"sudo ./hw/fpga/setup_fpga.sh\"");
@@ -518,6 +534,9 @@ impl HwModel for ModelFpgaRealtime {
         m.set_cptra_rst_b(false);
 
         writeln!(m.output().logger(), "new_unbooted")?;
+
+        println!("AXI reset");
+        m.axi_reset();
 
         // Set generic input wires.
         let input_wires = [(!params.uds_granularity_64 as u32) << 31, 0];
@@ -740,6 +759,9 @@ impl Drop for ModelFpgaRealtime {
         self.realtime_thread_exit_flag
             .store(true, Ordering::Relaxed);
         self.realtime_thread.take().unwrap().join().unwrap();
+
+        // reset the AXI bus as we leave
+        self.axi_reset();
 
         // Unmap UIO memory space so that the file lock is released
         self.unmap_mapping(self.wrapper, FPGA_WRAPPER_MAPPING);
