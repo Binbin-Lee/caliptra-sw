@@ -45,8 +45,33 @@ impl From<u32> for CmdType {
     }
 }
 
+enum Endianness {
+    Little = 0x0,
+    Big = 0x1,
+}
+
+impl From<Endianness> for u32 {
+    fn from(mode: Endianness) -> Self {
+        mode as Self
+    }
+}
+
+impl From<u32> for Endianness {
+    fn from(value: u32) -> Self {
+        match value {
+            0x0 => Endianness::Little,
+            0x1 => Endianness::Big,
+            _ => panic!("Invalid endianness"),
+        }
+    }
+}
+
 fn u32_to_u8_le(input: &[u32]) -> Vec<u8> {
     input.iter().flat_map(|n| n.to_le_bytes()).collect()
+}
+
+fn u32_to_u8_be(input: &[u32]) -> Vec<u8> {
+    input.iter().flat_map(|n| n.to_be_bytes()).collect()
 }
 
 fn digest_to_state(input: [u8; 200]) -> [u32; 50] {
@@ -118,6 +143,8 @@ register_bitfields! [
 
 const SHA3_STATE_MEMORY_SIZE: usize = 1600 / 32;
 const SHA3_MSG_FIFO_SIZE: usize = 2048 / 32;
+// TODO: I think this value is wrong.
+const SHA3_MSG_FIFO_MAX_DEPTH: usize = 32;
 
 /// SHA3 Peripheral
 #[derive(Bus)]
@@ -349,13 +376,25 @@ impl HashSha3 {
         let cmd: CmdType = self.cmd.reg.read(Cmd::CMD).into();
         match cmd {
             CmdType::Start => {
+                if !self.sha3.has_hasher() {
+                    Err(BusError::StoreAccessFault)?
+                }
+
                 self.status.reg.modify(Status::SHA3_IDLE::CLEAR);
                 self.cmd.reg.write(Cmd::CMD.val(CmdType::Process.into()));
 
-                // TODO: Check that cfg register has been set.
                 if self.status.reg.read(Status::FIFO_EMPTY) == 0 {
                     let depth = self.status.reg.read(Status::FIFO_DEPTH) as usize;
-                    let data = u32_to_u8_le(&self.msg_fifo[..depth]);
+                    let endianness = self
+                        .cfg_shadowed
+                        .reg
+                        .read(CfgShadowed::STATE_ENDIANNESS)
+                        .into();
+
+                    let data = match endianness {
+                        Endianness::Little => u32_to_u8_le(&self.msg_fifo[..depth]),
+                        Endianness::Big => u32_to_u8_be(&self.msg_fifo[..depth]),
+                    };
 
                     let res = self.sha3.update(&data);
                     if !res {
@@ -400,24 +439,36 @@ impl HashSha3 {
             Err(BusError::StoreAccessFault)?
         }
 
-        // TODO: Check the cfg msg endianness value.
-        self.msg_fifo[idx] = val;
+        let endianness = self
+            .cfg_shadowed
+            .reg
+            .read(CfgShadowed::MSG_ENDIANNESS)
+            .into();
+
+        self.msg_fifo[idx] = match endianness {
+            Endianness::Little => val.to_le(),
+            Endianness::Big => val.to_be(),
+        };
 
         let idle = self.status.reg.read(Status::SHA3_IDLE);
-        let depth = self.status.reg.read(Status::FIFO_DEPTH);
+        let mut depth = self.status.reg.read(Status::FIFO_DEPTH);
+        let mut full = 0;
+        if depth < SHA3_MSG_FIFO_MAX_DEPTH as u32 {
+            depth += 1;
+        }
 
-        let full = if depth == SHA3_MSG_FIFO_SIZE as u32 {
-            1
-        } else {
-            0
-        };
+        if depth == SHA3_MSG_FIFO_MAX_DEPTH as u32 {
+            full = 1;
+        }
 
         self.status.reg.modify(
             Status::FIFO_EMPTY::CLEAR
                 + Status::SHA3_IDLE.val(idle)
                 + Status::FIFO_FULL.val(full)
-                + Status::FIFO_DEPTH.val(depth + 1),
+                + Status::FIFO_DEPTH.val(depth),
         );
+
+        println!("depth after: {}", self.status.reg.read(Status::FIFO_DEPTH));
 
         Ok(())
     }
@@ -452,6 +503,22 @@ mod tests {
         }
 
         output
+    }
+
+    fn fill_msg_fifo(sha3: &mut HashSha3) {
+        let data: u32 = 0xDEADBEEF;
+        for i in 0..SHA3_FIFO_MAX_DEPTH {
+            sha3.write(RvSize::Word, OFFSET_MSG_FIFO + (i * 4) as u32, data)
+                .unwrap();
+        }
+    }
+
+    fn read_msg_fifo(sha3: &mut HashSha3) -> [u32; SHA3_MSG_FIFO_SIZE] {
+        let data: u32 = 0xDEADBEEF;
+        for i in 0..SHA3_FIFO_MAX_DEPTH {
+            sha3.write(RvSize::Word, OFFSET_MSG_FIFO + (i * 4) as u32, data)
+                .unwrap();
+        }
     }
 
     #[test]
@@ -579,6 +646,39 @@ mod tests {
     }
 
     #[test]
+    fn test_msg_fifo_be() {
+        let mut sha3 = HashSha3::new(&Clock::new(), KeyVault::new());
+
+        sha3.write(RvSize::Word, OFFSET_CFG_REGWEN, CfgRegWen::EN::SET.into())
+            .unwrap();
+
+        // Set config.
+        sha3.write(
+            RvSize::Word,
+            OFFSET_CFG_SHADOWED,
+            (CfgShadowed::KSTRENGTH.val(Sha3Strength::L256.into())
+                + CfgShadowed::MODE.val(Sha3Mode::SHAKE.into())
+                + CfgShadowed::MSG_ENDIANNESS.val(Endianness::Big.into()))
+            .into(),
+        )
+        .unwrap();
+
+        // Ascii: 'abc'
+        let abc: u32 = 0x616263;
+        sha3.write(RvSize::Word, OFFSET_MSG_FIFO, abc).unwrap();
+
+        let status = InMemoryRegister::<u32, Status::Register>::new(
+            sha3.read(RvSize::Word, OFFSET_STATUS).unwrap(),
+        );
+        assert!(!status.is_set(Status::FIFO_EMPTY));
+        assert_eq!(status.read(Status::FIFO_DEPTH), 1);
+        assert_eq!(
+            sha3.read(RvSize::Word, OFFSET_MSG_FIFO).ok(),
+            Some(abc.to_be())
+        );
+    }
+
+    #[test]
     fn test_digest() {
         let mut sha3 = HashSha3::new(&Clock::new(), KeyVault::new());
 
@@ -626,5 +726,68 @@ mod tests {
         ];
 
         assert_eq!(state, expected);
+    }
+
+    #[test]
+    fn test_digest_no_cfg() {
+        let mut sha3 = HashSha3::new(&Clock::new(), KeyVault::new());
+
+        sha3.write(RvSize::Word, OFFSET_CFG_REGWEN, CfgRegWen::EN::SET.into())
+            .unwrap();
+
+        let data: u32 = 0xDEADBEEF;
+        sha3.write(RvSize::Word, OFFSET_MSG_FIFO, data).unwrap();
+
+        let status = InMemoryRegister::<u32, Status::Register>::new(
+            sha3.read(RvSize::Word, OFFSET_STATUS).unwrap(),
+        );
+
+        assert!(status.is_set(Status::SHA3_IDLE));
+
+        // Cmd should fail since cfg is not set.
+        assert!(sha3
+            .write(RvSize::Word, OFFSET_CMD, CmdType::Start.into())
+            .is_err());
+    }
+
+    #[test]
+    fn test_digest_full() {
+        let mut sha3 = HashSha3::new(&Clock::new(), KeyVault::new());
+
+        sha3.write(RvSize::Word, OFFSET_CFG_REGWEN, CfgRegWen::EN::SET.into())
+            .unwrap();
+
+        // Set config.
+        sha3.write(
+            RvSize::Word,
+            OFFSET_CFG_SHADOWED,
+            (CfgShadowed::KSTRENGTH.val(Sha3Strength::L256.into())
+                + CfgShadowed::MODE.val(Sha3Mode::SHAKE.into()))
+            .into(),
+        )
+        .unwrap();
+
+        fill_msg_fifo(&mut sha3);
+
+        let status = InMemoryRegister::<u32, Status::Register>::new(
+            sha3.read(RvSize::Word, OFFSET_STATUS).unwrap(),
+        );
+
+        assert!(status.is_set(Status::SHA3_IDLE));
+        assert!(!status.is_set(Status::FIFO_EMPTY));
+        println!("fifo_depth: {}", status.read(Status::FIFO_DEPTH));
+        assert!(status.is_set(Status::FIFO_FULL));
+
+        sha3.write(RvSize::Word, OFFSET_CMD, CmdType::Start.into())
+            .unwrap();
+
+        let cmd = InMemoryRegister::<u32, Cmd::Register>::new(
+            sha3.read(RvSize::Word, OFFSET_CMD).unwrap(),
+        );
+
+        assert_eq!(cmd.read(Cmd::CMD), CmdType::Done.into());
+
+        let state = read_state(&mut sha3);
+        assert!(state.iter().any(|n| *n != 0));
     }
 }

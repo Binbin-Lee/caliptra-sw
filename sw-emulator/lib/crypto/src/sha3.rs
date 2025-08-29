@@ -136,6 +136,10 @@ impl Sha3 {
     pub fn digest(&self) -> [u8; DIGEST_SIZE] {
         self.digest
     }
+
+    pub fn has_hasher(&self) -> bool {
+        self.hasher.is_some()
+    }
 }
 
 #[cfg(test)]
