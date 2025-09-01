@@ -41,7 +41,7 @@ use hand_off::HandOff;
 pub fn main() {}
 
 const BANNER: &str = r#"
-Running Caliptra FMC ...
+LBB Running Caliptra FMC ...
 "#;
 
 // Upon cold reset, fills the reserved field with 0xFFs. Any newly-allocated fields will

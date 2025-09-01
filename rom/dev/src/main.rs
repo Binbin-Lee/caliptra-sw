@@ -59,7 +59,7 @@ use caliptra_drivers::printer as print;
 pub fn main() {}
 
 const BANNER: &str = r#"
-Running Caliptra ROM ...
+Running Caliptra ROM from Binbin's repo ...
 "#;
 
 extern "C" {

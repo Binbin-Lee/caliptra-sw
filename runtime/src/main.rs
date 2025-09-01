@@ -28,7 +28,9 @@ use core::hint::black_box;
 #[cfg(feature = "std")]
 pub fn main() {}
 
-const BANNER: &str = "Caliptra RT";
+const BANNER: &str = r#"
+Running Caliptra RT from Binbin's repo ...
+"#;
 
 #[no_mangle]
 #[allow(clippy::empty_loop)]
