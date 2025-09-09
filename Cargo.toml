@@ -187,7 +187,7 @@ smlang = "0.8.0"
 spki = { version = "0.7.3", features = ["alloc"] }
 syn = "1.0.107"
 tinytemplate = "1.1"
-tock-registers = { git = "https://github.com/tock/tock.git", rev = "b128ae817b86706c8c4e39d27fae5c54b98659f1" }
+tock-registers = { git = "https://github.com/Binbin-Lee/tock.git", rev = "5bd5f71e6faae14f27c441fc54fce5a365a9ab1e" }
 toml = "0.7.0"
 ufmt = { git = "https://github.com/korran/ufmt.git", rev = "1d0743c1ffffc68bc05ca8eeb81c166192863f33", features = ["inline"] }
 uio = { version = "0.4.0" }

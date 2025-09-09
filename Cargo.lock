@@ -2739,7 +2739,7 @@ dependencies = [
 [[package]]
 name = "tock-registers"
 version = "0.9.0"
-source = "git+https://github.com/tock/tock.git?rev=b128ae817b86706c8c4e39d27fae5c54b98659f1#b128ae817b86706c8c4e39d27fae5c54b98659f1"
+source = "git+https://github.com/Binbin-Lee/tock.git?rev=5bd5f71e6faae14f27c441fc54fce5a365a9ab1e#5bd5f71e6faae14f27c441fc54fce5a365a9ab1e"
 
 [[package]]
 name = "toml"
